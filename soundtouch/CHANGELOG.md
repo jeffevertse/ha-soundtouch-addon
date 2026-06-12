@@ -4,6 +4,14 @@ All notable changes to this add-on are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.2
+
+### Fixed
+- When the speaker's device id becomes known after a run that used the generic
+  `soundtouch_20` fallback (e.g. after setting `device_host`), the add-on now
+  clears the old generic retained discovery configs on connect, so you don't end
+  up with an orphaned, unavailable duplicate device.
+
 ## 1.1.1
 
 ### Fixed

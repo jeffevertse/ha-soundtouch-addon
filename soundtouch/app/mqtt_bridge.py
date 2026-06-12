@@ -26,6 +26,26 @@ except ImportError:  # paho not installed → bridge silently disabled
 
 DISCOVERY_PREFIX = "homeassistant"
 
+# The node id used before the speaker's device id is known. When we later learn
+# the real id, the old generic discovery configs (retained) are cleared so the
+# upgrade doesn't leave an orphaned, unavailable duplicate device behind.
+LEGACY_UID = "bose_soundtouch_20"
+
+# Every (component, object_id) we ever publish — used both to publish discovery
+# and to clear a stale node's retained configs.
+ALL_OBJECTS = [
+    ("switch",        "power"),
+    ("number",        "volume"),
+    ("number",        "bass"),
+    ("select",        "source"),
+    ("button",        "play_pause"),
+    ("button",        "next"),
+    ("button",        "previous"),
+    ("button",        "mute"),
+    ("sensor",        "now_playing"),
+    ("binary_sensor", "playing"),
+]
+
 
 def _slug(s: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "_", (s or "").lower()).strip("_") or "20"
@@ -113,6 +133,15 @@ class MqttBridge:
             "manufacturer": "Bose",
             "model":        "SoundTouch 20",
         }
+
+    def _clear_node(self, uid: str):
+        """Remove a node's retained discovery configs (empty payload = delete)."""
+        if not self._client:
+            return
+        for component, object_id in ALL_OBJECTS:
+            self._client.publish(
+                f"{DISCOVERY_PREFIX}/{component}/{uid}/{object_id}/config", "", retain=True)
+        print(f"[mqtt] cleared stale discovery for {uid}")
 
     def _disc(self, component: str, object_id: str, payload: dict):
         full = {
@@ -240,6 +269,11 @@ class MqttBridge:
         self._connected.set()
         client.publish(self._avail, "online", retain=True)
         client.subscribe(f"{self._base}/+/set")
+        # If we now have a real device id, remove the generic fallback entities a
+        # previous run may have published (retained), so they don't linger as an
+        # orphaned "unavailable" duplicate device.
+        if self._uid != LEGACY_UID:
+            self._clear_node(LEGACY_UID)
         self.publish_discovery()
         # Now that the connection is up, let the app push a fresh state snapshot
         # (publishes issued before CONNACK would otherwise be dropped).
