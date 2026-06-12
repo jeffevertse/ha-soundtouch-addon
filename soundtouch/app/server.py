@@ -525,6 +525,10 @@ def _setup_ws_callbacks(device: SoundTouch):
                 print(f"[server] Reconnect: idle (src={src!r}, last={last_src!r}) — auto-resume")
                 threading.Thread(target=_auto_resume, daemon=True).start()
 
+            # Refresh MQTT state after a WebSocket reconnect.
+            if _mqtt:
+                _publish_mqtt_snapshot()
+
         except Exception as e:
             print(f"[server] Reconnect check failed: {e}")
 
@@ -1057,6 +1061,9 @@ def warmup():
         # immediately after (re)start without needing a manual sync
         time.sleep(5)   # let the device finish its own boot tasks
         _resync_hardware_presets()
+        # Device is confirmed reachable now — refresh MQTT state (covers the case
+        # where MQTT connected before the speaker was reachable).
+        _publish_mqtt_snapshot()
     except Exception as e:
         print(f"Could not connect at startup: {e}")
 
@@ -1102,6 +1109,26 @@ def _mqtt_select_source(option: str):
     print(f"[mqtt] unknown source option {option!r}")
 
 
+def _publish_mqtt_snapshot():
+    """
+    Publish a full state snapshot.  Called whenever both the broker and the
+    device are up: on MQTT (re)connect (bridge on_ready), after warmup, and on
+    WebSocket reconnect.  A no-op until the device is reachable / MQTT connected.
+    """
+    if not _mqtt:
+        return
+    try:
+        d  = get_device()
+        np = d.now_playing()
+        _mqtt.publish_now_playing(np, source_option=_source_option_for(np))
+        _mqtt.publish_volume(d.get_volume())
+        caps = d.get_bass_capabilities()
+        if caps.get("available"):
+            _mqtt.publish_bass(d.get_bass())
+    except Exception as e:
+        print(f"[server] MQTT snapshot failed: {e}")
+
+
 def _start_mqtt():
     """Connect the MQTT bridge once the device is reachable (background thread)."""
     global _mqtt
@@ -1120,36 +1147,40 @@ def _start_mqtt():
         "mute":          lambda: get_device().mute(),
     }
 
+    # Resolve the device id so the entity unique_ids are stable.  The speaker may
+    # not be reachable the instant we start (discovery, boot order) — retry a few
+    # times before falling back to a generic id.
     device_id, device_name = "", "SoundTouch 20"
     bass_caps = None
-    try:
-        info = get_device().get_info()
-        device_id   = info.get("deviceID", "") or ""
-        device_name = info.get("name") or device_name
-    except Exception as e:
-        print(f"[server] MQTT: could not read device info yet: {e}")
-    try:
-        bass_caps = get_device().get_bass_capabilities()
-    except Exception:
-        pass
+    for _ in range(5):
+        try:
+            info = get_device().get_info()
+            device_id   = info.get("deviceID", "") or ""
+            device_name = info.get("name") or device_name
+            bass_caps   = get_device().get_bass_capabilities()
+            break
+        except Exception as e:
+            print(f"[server] MQTT: device not ready yet ({e}); retrying in 5s…")
+            time.sleep(5)
+    if not device_id:
+        print("[server] MQTT: speaker unreachable — publishing with a generic id. "
+              "If discovery isn't working, set the 'device_host' add-on option.")
 
-    bridge = mqtt_bridge.MqttBridge(handlers, device_id=device_id, device_name=device_name)
-    presets = [p.get("name") for p in load_config()["presets"] if p.get("name")]
-    bridge.configure(presets=presets, bass_caps=bass_caps)   # stored; published on connect
-    if not bridge.start():
-        return
+    bridge = mqtt_bridge.MqttBridge(
+        handlers,
+        device_id=device_id,
+        device_name=device_name,
+        on_ready=lambda: threading.Thread(target=_publish_mqtt_snapshot, daemon=True).start(),
+    )
+    bridge.configure(
+        presets=[p.get("name") for p in load_config()["presets"] if p.get("name")],
+        bass_caps=bass_caps,
+    )
+    # Set the global before start() so the on_ready callback (fired from the MQTT
+    # network thread on connect) sees the bridge.
     _mqtt = bridge
-
-    # Push an initial snapshot so the entities aren't "unknown" until the first
-    # WebSocket event arrives.
-    try:
-        np = get_device().now_playing()
-        _mqtt.publish_now_playing(np, source_option=_source_option_for(np))
-        _mqtt.publish_volume(get_device().get_volume())
-        if bass_caps and bass_caps.get("available"):
-            _mqtt.publish_bass(get_device().get_bass())
-    except Exception as e:
-        print(f"[server] MQTT initial state failed: {e}")
+    if not bridge.start():
+        _mqtt = None
 
 
 def _startup(port: int = 5000):

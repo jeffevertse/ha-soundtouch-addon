@@ -4,6 +4,22 @@ All notable changes to this add-on are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.1
+
+### Fixed
+- MQTT entities stayed `unknown` until something changed on the speaker. The
+  initial state snapshot raced the broker connection (publishes before CONNACK
+  were dropped). State is now published on MQTT connect, after warmup, and on
+  every WebSocket reconnect, so entities populate as soon as the speaker and
+  broker are both up.
+- The device id used for entity unique_ids is now resolved with retries, so the
+  entities get stable ids instead of the generic `soundtouch_20` fallback when
+  the speaker is briefly unreachable at startup.
+
+### Note
+- If the add-on can't auto-discover the speaker (in-container mDNS/SSDP varies by
+  network), set the **`device_host`** option to the speaker's IP.
+
 ## 1.1.0
 
 ### Added

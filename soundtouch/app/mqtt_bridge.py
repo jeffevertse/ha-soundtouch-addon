@@ -40,8 +40,10 @@ class MqttBridge:
         play_pause(), next(), previous(), mute()
     """
 
-    def __init__(self, handlers: dict, *, device_id: str = "", device_name: str = "SoundTouch 20"):
+    def __init__(self, handlers: dict, *, device_id: str = "", device_name: str = "SoundTouch 20",
+                 on_ready=None):
         self._handlers     = handlers
+        self._on_ready     = on_ready   # called after each (re)connect + discovery publish
         self._uid          = "bose_soundtouch_" + _slug(device_id or "20")
         self._device_name  = device_name or "SoundTouch 20"
         self._base         = f"soundtouch/{self._uid}"
@@ -239,6 +241,13 @@ class MqttBridge:
         client.publish(self._avail, "online", retain=True)
         client.subscribe(f"{self._base}/+/set")
         self.publish_discovery()
+        # Now that the connection is up, let the app push a fresh state snapshot
+        # (publishes issued before CONNACK would otherwise be dropped).
+        if self._on_ready:
+            try:
+                self._on_ready()
+            except Exception as e:
+                print(f"[mqtt] on_ready error: {e}")
 
     def _on_message(self, client, userdata, msg):
         try:
