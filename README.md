@@ -32,6 +32,9 @@ sidebar via Ingress.
 - "Sync to Device Buttons" writes the presets into the speaker's 6 physical
   buttons, pointing them back at the add-on's built-in stream proxy
 - Auto-resumes the last station when the speaker powers back on
+- **Home Assistant entities via MQTT discovery** (optional): power, volume, bass,
+  source/preset select, transport buttons and now-playing — usable in
+  dashboards, automations and voice (requires an MQTT broker)
 
 See [`soundtouch/DOCS.md`](soundtouch/DOCS.md) for configuration and
 troubleshooting.

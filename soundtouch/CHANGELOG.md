@@ -4,6 +4,22 @@ All notable changes to this add-on are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.0
+
+### Added
+- **MQTT discovery entities.** When an MQTT broker is configured, the add-on
+  publishes a set of entities grouped under one "SoundTouch" device: a **Power**
+  switch, **Volume** and **Bass** numbers, a **Source** select (presets + AUX +
+  Bluetooth), **Play/Pause / Next / Previous / Mute** buttons, a **Now Playing**
+  sensor (with attributes) and a **Playing** binary sensor. Control the speaker
+  from HA dashboards, automations and voice.
+  - Home Assistant core has no MQTT `media_player` platform, so these standard
+    entities are published instead of a single media_player.
+  - Broker credentials are taken automatically from the Home Assistant MQTT
+    service (e.g. the Mosquitto broker add-on) — no manual broker config.
+  - New `mqtt_enabled` option (default `true`) to turn the bridge off.
+- Availability (LWT) so the entities show online/offline with the add-on.
+
 ## 1.0.0
 
 Initial release — Home Assistant add-on port of the SoundTouch-Pi controller.

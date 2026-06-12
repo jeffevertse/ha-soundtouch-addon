@@ -6,6 +6,8 @@ the Home Assistant sidebar via Ingress. Home Assistant handles authentication,
 so there is no app-level auth here. Config and persistent state live in /data.
 """
 
+from __future__ import annotations
+
 import ipaddress
 import json
 import os
@@ -21,8 +23,12 @@ from soundtouch import SoundTouch
 from upnp_player import UPnPPlayer
 from discovery import discover
 import state as st
+import mqtt_bridge
 
 _server_port: int = 5000   # updated at startup; used by background threads
+
+# Optional MQTT-discovery bridge (None when no broker configured).
+_mqtt: "mqtt_bridge.MqttBridge | None" = None
 
 # Config + persistent state live in the add-on's /data volume (survives restarts
 # and updates). config.default.json (bundled in the image) seeds it on first run.
@@ -351,6 +357,11 @@ def _play_preset_id(preset_id: int) -> bool:
             "status":    "PLAY_STATE",
             "preset_id": preset_id,
         })
+        if _mqtt:
+            _mqtt.publish_now_playing({
+                "source": "UPNP", "status": "PLAY_STATE",
+                "station": preset.get("name"), "preset_id": preset_id,
+            }, source_option=preset.get("name"))
         print(f"[server] Playing preset {preset_id}: {preset.get('name')}")
         return True
     except Exception as e:
@@ -459,12 +470,19 @@ def _setup_ws_callbacks(device: SoundTouch):
                         "icon":    saved.get("now_playing_icon")}
 
             _sse_push("nowPlaying", data)
+            if _mqtt:
+                try:
+                    _mqtt.publish_now_playing(data, source_option=_source_option_for(data))
+                except Exception:
+                    pass
 
         # ── volume changed (physical knob or app) ───────────────────────────
         elif event_type == "volumeUpdated":
             try:
                 vol = device.get_volume()
                 _sse_push("volume", vol)
+                if _mqtt:
+                    _mqtt.publish_volume(vol)
             except Exception:
                 pass
 
@@ -625,6 +643,9 @@ def api_save_preset(preset_id: int):
             "icon":       data.get("icon", "📻"),
         })
     save_config(cfg)
+    if _mqtt:
+        # Preset names feed the MQTT "Source" select options — republish.
+        _mqtt.configure(presets=[p.get("name") for p in cfg["presets"] if p.get("name")])
     return jsonify({"ok": True})
 
 
@@ -704,7 +725,10 @@ def api_get_bass():
 def api_set_bass():
     data = request.get_json()
     try:
-        get_device().set_bass(int(data["level"]))
+        level = int(data["level"])
+        get_device().set_bass(level)
+        if _mqtt:
+            _mqtt.publish_bass(level)
         return jsonify({"ok": True})
     except Exception as e:
         print(f"[server] api_set_bass: {e}")
@@ -1037,6 +1061,97 @@ def warmup():
         print(f"Could not connect at startup: {e}")
 
 
+# ── MQTT discovery bridge ───────────────────────────────────────────────────
+#
+# Home Assistant core has no MQTT media_player platform, so the SoundTouch is
+# exposed as a set of standard MQTT-discovery entities (switch/number/select/
+# button/sensor) grouped as one device.  Enabled only when run.sh found the
+# Supervisor MQTT service and exported MQTT_HOST.
+
+def _source_option_for(np: dict) -> str | None:
+    """Map a now-playing payload to one of the MQTT "Source" select options."""
+    src = (np.get("source") or "").upper()
+    if src == "AUX":
+        return "AUX"
+    if src == "BLUETOOTH":
+        return "Bluetooth"
+    name = np.get("station") or st.load().get("now_playing_name")
+    if name and name in [p.get("name") for p in load_config()["presets"]]:
+        return name
+    return None
+
+
+def _mqtt_power(on: bool):
+    d = get_device()
+    is_on = (d.now_playing().get("source") or "") not in ("STANDBY", "")
+    if on != is_on:
+        d.power()   # the SoundTouch only has a toggle
+
+
+def _mqtt_select_source(option: str):
+    if option == "AUX":
+        get_device().select_aux()
+        return
+    if option == "Bluetooth":
+        get_device().select_bluetooth()
+        return
+    for p in load_config()["presets"]:
+        if p.get("name") == option:
+            _play_preset_id(p["id"])
+            return
+    print(f"[mqtt] unknown source option {option!r}")
+
+
+def _start_mqtt():
+    """Connect the MQTT bridge once the device is reachable (background thread)."""
+    global _mqtt
+    if not os.environ.get("MQTT_HOST"):
+        print("[server] MQTT bridge disabled (no broker configured)")
+        return
+
+    handlers = {
+        "power":         _mqtt_power,
+        "set_volume":    lambda v: get_device().set_volume(int(v)),
+        "set_bass":      lambda v: get_device().set_bass(int(v)),
+        "select_source": _mqtt_select_source,
+        "play_pause":    lambda: get_device().play_pause(),
+        "next":          lambda: get_device().next_track(),
+        "previous":      lambda: get_device().prev_track(),
+        "mute":          lambda: get_device().mute(),
+    }
+
+    device_id, device_name = "", "SoundTouch 20"
+    bass_caps = None
+    try:
+        info = get_device().get_info()
+        device_id   = info.get("deviceID", "") or ""
+        device_name = info.get("name") or device_name
+    except Exception as e:
+        print(f"[server] MQTT: could not read device info yet: {e}")
+    try:
+        bass_caps = get_device().get_bass_capabilities()
+    except Exception:
+        pass
+
+    bridge = mqtt_bridge.MqttBridge(handlers, device_id=device_id, device_name=device_name)
+    presets = [p.get("name") for p in load_config()["presets"] if p.get("name")]
+    bridge.configure(presets=presets, bass_caps=bass_caps)   # stored; published on connect
+    if not bridge.start():
+        return
+    _mqtt = bridge
+
+    # Push an initial snapshot so the entities aren't "unknown" until the first
+    # WebSocket event arrives.
+    try:
+        np = get_device().now_playing()
+        _mqtt.publish_now_playing(np, source_option=_source_option_for(np))
+        _mqtt.publish_volume(get_device().get_volume())
+        if bass_caps and bass_caps.get("available"):
+            _mqtt.publish_bass(get_device().get_bass())
+    except Exception as e:
+        print(f"[server] MQTT initial state failed: {e}")
+
+
 def _startup(port: int = 5000):
     """
     Initialise background tasks.
@@ -1050,6 +1165,7 @@ def _startup(port: int = 5000):
     _seed_config()
     _apply_addon_options()
     threading.Thread(target=warmup, daemon=True).start()
+    threading.Thread(target=_start_mqtt, daemon=True).start()
     print(f"[server] Background tasks started (port={_server_port})")
 
 

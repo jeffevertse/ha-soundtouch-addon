@@ -1,5 +1,5 @@
 name: SoundTouch
-version: "1.0.0"
+version: "1.1.0"
 slug: soundtouch
 description: >-
   Control a Bose SoundTouch 20 and stream internet radio directly, bypassing
@@ -23,9 +23,16 @@ panel_title: SoundTouch
 #   * the SoundTouch fetches hardware-preset streams back from this add-on's
 #     /api/stream/<id> proxy, so the port must be reachable on the LAN
 host_network: true
+# Auto-receive broker credentials from the Home Assistant MQTT service
+# (e.g. the Mosquitto broker add-on). "want" = use it if present, but the
+# add-on still starts without a broker (MQTT entities are simply skipped).
+services:
+  - mqtt:want
 options:
   device_host: ""
   auto_discover: true
+  mqtt_enabled: true
 schema:
   device_host: "str?"
   auto_discover: bool
+  mqtt_enabled: bool

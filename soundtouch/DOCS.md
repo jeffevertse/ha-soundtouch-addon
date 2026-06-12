@@ -24,6 +24,7 @@ exposes a web UI in the Home Assistant sidebar through Ingress.
 ```yaml
 device_host: ""          # leave empty to auto-discover, or set e.g. "192.168.1.61"
 auto_discover: true      # use mDNS/SSDP discovery when device_host is empty
+mqtt_enabled: true       # publish MQTT-discovery entities (see "Home Assistant entities")
 ```
 
 - **device_host** — Set this if auto-discovery doesn't find the speaker (some
@@ -31,6 +32,8 @@ auto_discover: true      # use mDNS/SSDP discovery when device_host is empty
   Find the IP in your router's DHCP client list.
 - **auto_discover** — When `device_host` is empty and this is on, the add-on
   scans the network for the SoundTouch on startup.
+- **mqtt_enabled** — Publish Home Assistant entities over MQTT discovery (see
+  below). Turn off if you only want the web UI.
 
 Changes to these options take effect on the next add-on start/restart.
 
@@ -63,6 +66,42 @@ station that was playing. State is persisted in `/data/state.json`.
 ### Other sources
 AUX and Bluetooth inputs can be selected from the **Other Sources** section.
 
+## Home Assistant entities (MQTT)
+
+With `mqtt_enabled: true` and an MQTT broker configured, the add-on publishes
+these entities via MQTT discovery, grouped under a single **SoundTouch** device:
+
+| Entity                         | Type            | What it does                                   |
+| ------------------------------ | --------------- | ---------------------------------------------- |
+| **Power**                      | `switch`        | Turn the speaker on / off (toggle)             |
+| **Volume**                     | `number` 0–100  | Set the volume                                 |
+| **Bass**                       | `number`        | Set bass (only if the speaker supports it)     |
+| **Source**                     | `select`        | Pick a preset, or AUX / Bluetooth              |
+| **Play/Pause, Next, Previous, Mute** | `button`s | Transport controls                             |
+| **Now Playing**                | `sensor`        | Station/track text, with attributes            |
+| **Playing**                    | `binary_sensor` | On while audio is playing                       |
+
+> **Why not a single `media_player` entity?** Home Assistant core has no MQTT
+> `media_player` platform — MQTT discovery doesn't support it — so the add-on
+> publishes the standard entities above instead. They cover the same control
+> surface for dashboards, automations and voice.
+
+### Setting up the MQTT broker (one-time)
+
+If you don't already have MQTT in Home Assistant:
+
+1. **Settings → Add-ons → Add-on store** → install **Mosquitto broker** → **Start**.
+2. Home Assistant should auto-discover it: **Settings → Devices & Services** →
+   configure the **MQTT** integration (or add it and point it at the Mosquitto
+   broker, "core-mosquitto"). Leave it using the broker's defaults.
+3. Restart the **SoundTouch** add-on. It picks up the broker credentials
+   automatically (no broker settings to enter here) and the **SoundTouch** device
+   appears under **Settings → Devices & Services → MQTT**.
+
+The add-on log shows `MQTT enabled — broker …` and `[mqtt] discovery published`
+when it's working. If you see `no MQTT service is available`, finish step 2 and
+restart the add-on.
+
 ## Troubleshooting
 
 **"SoundTouch not found" / web UI shows a reconnect button**
@@ -80,8 +119,14 @@ AUX and Bluetooth inputs can be selected from the **Other Sources** section.
   use the direct `.mp3`/`.aac` or `.pls`/`.m3u` URL. Playlists (`.pls`, `.m3u`,
   `.m3u8`, `.xspf`) are resolved to the first stream automatically.
 
+**MQTT entities don't appear**
+- Confirm the Mosquitto broker add-on is running and the MQTT integration is
+  configured (see "Setting up the MQTT broker"). Then restart this add-on.
+- Check the add-on log for `MQTT enabled` / `[mqtt] discovery published`.
+- The entities live under **Settings → Devices & Services → MQTT → SoundTouch**.
+
 **Logs**
-- Open the add-on → **Log** tab to see discovery, playback and proxy messages.
+- Open the add-on → **Log** tab to see discovery, playback, MQTT and proxy messages.
 
 ## How it works
 
