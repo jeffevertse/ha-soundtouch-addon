@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Local add-on test data (from `docker run -v .../data:/data`)
+data/
+config.json
+state.json
+
+# OS
+.DS_Store

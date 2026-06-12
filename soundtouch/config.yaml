@@ -1,0 +1,31 @@
+name: SoundTouch
+version: "1.0.0"
+slug: soundtouch
+description: >-
+  Control a Bose SoundTouch 20 and stream internet radio directly, bypassing
+  the (now unreliable) Bose cloud.
+url: https://github.com/jeffevertse/ha-soundtouch-addon/tree/main/soundtouch
+# Matches the ghcr.io/home-assistant/base:latest image (amd64 + aarch64),
+# which covers all current Home Assistant OS hardware (Pi 4/5, NUC, VM).
+arch:
+  - aarch64
+  - amd64
+# The home-assistant base image ships s6-overlay as its own init system,
+# so Supervisor must not add a second one.
+init: false
+# Embed the web UI in the Home Assistant sidebar; HA handles authentication.
+ingress: true
+ingress_port: 5000
+panel_icon: mdi:speaker-wireless
+panel_title: SoundTouch
+# host_network is REQUIRED:
+#   * zeroconf/mDNS + SSDP discovery need LAN multicast
+#   * the SoundTouch fetches hardware-preset streams back from this add-on's
+#     /api/stream/<id> proxy, so the port must be reachable on the LAN
+host_network: true
+options:
+  device_host: ""
+  auto_discover: true
+schema:
+  device_host: "str?"
+  auto_discover: bool
