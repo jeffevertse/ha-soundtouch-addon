@@ -4,6 +4,13 @@ All notable changes to this add-on are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.1
+
+### Changed
+- Pin the base image by digest and add upper bounds to the Python dependencies
+  for reproducible builds; Dependabot keeps them (and GitHub Actions) bumped.
+- Add a pytest suite + ruff lint, run in CI on every push.
+
 ## 1.2.0
 
 ### Security

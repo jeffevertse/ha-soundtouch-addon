@@ -1,6 +1,7 @@
-# Multi-arch Home Assistant base image (Alpine + s6-overlay + bashio).
-# Pin to a specific release for reproducible builds if you prefer.
-ARG BUILD_FROM=ghcr.io/home-assistant/base:latest
+# Multi-arch Home Assistant base image (Alpine + s6-overlay + bashio), pinned by
+# digest for reproducible builds. This was ghcr.io/home-assistant/base:latest on
+# 2026-06-13; Dependabot keeps it bumped (see .github/dependabot.yml).
+ARG BUILD_FROM=ghcr.io/home-assistant/base@sha256:3036cd72ba7755263cd103acc77cb0b438462720c2c8c23b7c2b52e52d7f4b50
 FROM ${BUILD_FROM}
 
 # Surfaced to the app as the displayed version string.
