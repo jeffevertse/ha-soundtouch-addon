@@ -2,5 +2,5 @@ flask>=3.0,<4
 gunicorn>=23.0,<24
 requests>=2.31,<3
 websocket-client>=1.7,<2
-zeroconf>=0.132,<1
+zeroconf>=0.149.16,<1
 paho-mqtt>=2.1,<3
