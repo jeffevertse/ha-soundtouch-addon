@@ -221,6 +221,8 @@ def get_upnp() -> UPnPPlayer:
 #   intact.
 
 _last_explicit_play_time: float = 0.0   # updated by _play_preset_id
+_last_explicit_off_time:  float = 0.0   # updated when the speaker is powered off via the add-on
+_RESUME_SUPPRESS_AFTER_OFF = 120        # seconds to suppress auto-resume after an explicit power-off
 
 
 _PRIVATE_NETS = [
@@ -371,17 +373,28 @@ def _play_preset_id(preset_id: int) -> bool:
 
 
 def _auto_resume():
-    """Resume the last played preset on power-on or add-on restart."""
+    """Resume the last played preset on a genuine power-on / add-on restart."""
     time.sleep(3)   # give the device a moment to finish booting
+    # Respect an intentional power-off issued from the add-on: if the user just
+    # turned the speaker off, don't immediately wake it back up.
+    if time.time() - _last_explicit_off_time < _RESUME_SUPPRESS_AFTER_OFF:
+        print("[server] Auto-resume suppressed — recent explicit power-off")
+        return
     saved = st.load()
     last_id = saved.get("last_preset_id")
     if not last_id:
         print("[server] Auto-resume: no last preset saved — skipping")
         return
-    # Don't double-play if the device is already streaming something
     try:
-        np = get_device().now_playing()
-        if np.get("status") in ("PLAY_STATE", "BUFFERING_STATE"):
+        np     = get_device().now_playing()
+        src    = np.get("source") or ""
+        status = np.get("status") or ""
+        # Never wake a speaker that is currently in standby — auto-resume is only
+        # meant to RESUME a device that has come back on, not turn one on.
+        if src == "STANDBY":
+            print("[server] Auto-resume: device in standby — skipping (won't wake it)")
+            return
+        if status in ("PLAY_STATE", "BUFFERING_STATE"):
             print("[server] Auto-resume: device already playing — skipping")
             return
     except Exception:
@@ -1089,10 +1102,16 @@ def _source_option_for(np: dict) -> str | None:
 
 
 def _mqtt_power(on: bool):
+    # The SoundTouch only has a power toggle, so only act on a real state change.
+    # Record OFF intent (and clear it on ON) so the auto-resume detection doesn't
+    # immediately wake the speaker back up after the user turns it off.
+    global _last_explicit_off_time
     d = get_device()
     is_on = (d.now_playing().get("source") or "") not in ("STANDBY", "")
-    if on != is_on:
-        d.power()   # the SoundTouch only has a toggle
+    if on == is_on:
+        return
+    _last_explicit_off_time = 0.0 if on else time.time()
+    d.power()
 
 
 def _mqtt_select_source(option: str):

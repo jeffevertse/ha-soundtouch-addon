@@ -4,6 +4,15 @@ All notable changes to this add-on are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.3
+
+### Fixed
+- Turning the speaker **off** (Power switch / web UI) could immediately turn it
+  back on and resume playback: the standby transition tripped the auto-resume
+  "power-on" detection. Auto-resume now (a) never wakes a speaker that is
+  currently in standby, and (b) is suppressed for a short window after an
+  explicit power-off from the add-on. Turning it back on still resumes normally.
+
 ## 1.1.2
 
 ### Fixed
