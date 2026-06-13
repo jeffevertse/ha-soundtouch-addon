@@ -4,6 +4,18 @@ All notable changes to this add-on are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.0
+
+### Security
+- The control API is no longer exposed unauthenticated on the LAN. Because the
+  add-on runs with `host_network`, port 5000 is reachable on the network; all
+  endpoints except the stream proxy (`/api/stream/<id>`, which the speaker must
+  fetch) are now restricted to the Home Assistant Ingress proxy. Removed the
+  `/api/debug/raw-select` endpoint (could send arbitrary commands to the speaker).
+- Hardened the stream proxy against SSRF / DNS-rebinding: outbound fetches now
+  resolve and validate the host once and connect to that pinned IP, and the
+  blocked-range list was tightened (0.0.0.0/8, IPv4-mapped IPv6).
+
 ## 1.1.3
 
 ### Fixed
