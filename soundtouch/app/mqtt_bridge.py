@@ -289,14 +289,16 @@ class MqttBridge:
             key     = suffix.rsplit("/set", 1)[0]          # e.g. "volume"
             payload = msg.payload.decode("utf-8", "replace").strip()
             h = self._handlers
-            if   key == "power":      h["power"](payload.upper() == "ON")
-            elif key == "volume":     h["set_volume"](int(float(payload)))
-            elif key == "bass":       h["set_bass"](int(float(payload)))
-            elif key == "source":     h["select_source"](payload)
-            elif key == "play_pause": h["play_pause"]()
-            elif key == "next":       h["next"]()
-            elif key == "previous":   h["previous"]()
-            elif key == "mute":       h["mute"]()
+            if key == "power":
+                h["power"](payload.upper() == "ON")
+            elif key == "volume":
+                h["set_volume"](int(float(payload)))
+            elif key == "bass":
+                h["set_bass"](int(float(payload)))
+            elif key == "source":
+                h["select_source"](payload)
+            elif key in ("play_pause", "next", "previous", "mute"):
+                h[key]()
             else:
                 print(f"[mqtt] ignoring unknown command topic {msg.topic}")
         except Exception as e:
